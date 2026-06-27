@@ -1,0 +1,47 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "pipeline-agent",
+  "agent": {
+    "pipeline-agent": {
+      "description": "Controls AutoVideoFactory video pipeline, YouTube uploads, and music management",
+      "mode": "subagent",
+      "permission": {
+        "bash": "allow",
+        "edit": "allow",
+        "read": "allow",
+        "external_directory": {
+          "D:\\HirePost\\AutoVideoFactory\\backend\\output\\*": "allow",
+          "*": "ask"
+        }
+      }
+    }
+  },
+  "command": {
+    "pipeline": {
+      "description": "Run the AutoVideoFactory pipeline with a topic and niche",
+      "prompt": "Run the AutoVideoFactory video generation pipeline. Topic: ${topic}. Niche: ${niche}. Duration: ${duration}. Publish to YouTube: ${publish}. Use the pipeline-agent to execute the full pipeline with these settings."
+    },
+    "youtube-auth": {
+      "description": "Authorize a YouTube account for uploads",
+      "prompt": "Start the backend server and open the YouTube OAuth authorization URL so the user can log in with their Google account. Use the pipeline-agent to generate the URL."
+    },
+    "download-music": {
+      "description": "Download trending background music tracks",
+      "prompt": "Download trending, royalty-free background music tracks (phonk, energetic, reel-style) for video production. Use the pipeline-agent to run the download script."
+    }
+  },
+  "skills": {
+    "paths": [".opencode/skills"]
+  },
+  "instructions": [".opencode/skills/autovideofactory/SKILL.md"],
+  "permission": {
+    "bash": {
+      "git *": "allow",
+      "pip *": "allow",
+      "python *": "allow",
+      "*": "ask"
+    },
+    "edit": "ask",
+    "read": "allow"
+  }
+}

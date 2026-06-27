@@ -1,0 +1,83 @@
+[project]
+name = "autovideofactory"
+version = "0.1.0"
+description = "Enterprise-grade autonomous AI video generation platform"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "sqlalchemy>=2.0.30",
+    "alembic>=1.13.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    "playwright>=1.44.0",
+    "opencv-python>=4.9.0",
+    "pytesseract>=0.3.10",
+    "pillow>=10.3.0",
+    "numpy>=1.26.0",
+    "httpx>=0.27.0",
+    "aiofiles>=23.2.0",
+    "python-multipart>=0.0.9",
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+    "jinja2>=3.1.4",
+    "click>=8.1.0",
+    "asyncio>=3.4.3",
+    "inject>=4.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+    "pre-commit>=3.7.0",
+]
+agents = [
+    "ollama>=0.1.0",
+    "openai>=1.30.0",
+]
+media = [
+    "ffmpeg-python>=0.2.0",
+    "moviepy>=1.0.3",
+    "whisper>=1.1.10",
+    "edge-tts>=6.1.0",
+]
+browser = [
+    "playwright>=1.44.0",
+    "browser-use>=0.1.0",
+    "stagehand>=0.1.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.2.0",
+]
+queue = [
+    "celery>=5.4.0",
+    "redis>=5.0.0",
+]
+youtube = [
+    "google-api-python-client>=2.130.0",
+    "google-auth-oauthlib>=1.2.0",
+    "google-auth-httplib2>=0.2.0",
+]
+all = [
+    "autovideofactory[dev,agents,media,browser,queue]",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+select = ["E", "F", "I", "N", "W", "ANN", "ARG", "BLE", "COM", "D", "ERA", "G", "ICN", "ISC", "LOG", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "RET", "RSE", "RUF", "S", "SIM", "SLF", "SLOT", "T10", "T20", "TCH", "TID", "TRY", "UP", "YTT"]
+ignore = ["ANN101", "ANN102", "D203", "D213", "D415"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+disallow_untyped_defs = true
+disallow_any_unimported = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
