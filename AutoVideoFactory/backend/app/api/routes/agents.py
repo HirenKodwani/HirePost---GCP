@@ -32,13 +32,25 @@ async def run_pipeline(data: dict = Body(...)):
 
 _content_pipeline: ContentPipeline = None
 
-@router.post("/run-full-pipeline")
-async def run_full_pipeline(data: dict = Body(...)):
+def _get_pipeline():
     global _content_pipeline
     if _content_pipeline is None:
         _content_pipeline = ContentPipeline()
-    pipeline_id = await _content_pipeline.run_full_pipeline(data)
+    return _content_pipeline
+
+@router.post("/run-full-pipeline")
+async def run_full_pipeline(data: dict = Body(...)):
+    pipe = _get_pipeline()
+    pipeline_id = await pipe.run_full_pipeline(data)
     return {"pipeline_id": pipeline_id, "status": "started"}
+
+@router.get("/pipeline-status/{pipeline_id}")
+async def get_pipeline_status(pipeline_id: str):
+    pipe = _get_pipeline()
+    result = pipe.get_pipeline(pipeline_id)
+    if not result:
+        return {"error": "Pipeline not found"}, 404
+    return result
 
 @router.post("/pipeline/{pipeline_id}/cancel")
 async def cancel_pipeline(pipeline_id: str):
