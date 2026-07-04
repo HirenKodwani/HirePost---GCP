@@ -82,6 +82,10 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${COMPUTE_SA}" \
     --role="roles/cloudsql.client"
 
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${COMPUTE_SA}" \
+    --role="roles/storage.objectViewer"
+
 # Build and push Docker image
 echo "=== Building Docker image ==="
 COMMIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "latest")
