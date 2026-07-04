@@ -115,7 +115,7 @@ AVF_LLM_TEMPERATURE=0.7,\
 AVF_LLM_MAX_TOKENS=8192,\
 AVF_STORAGE_PROVIDER=gcs,\
 AVF_GCS_BUCKET_NAME=${GCS_BUCKET},\
-AVF_DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASS}@//cloudsql/${CLOUD_SQL_CONNECTION}/${DB_NAME}" \
+AVF_DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=/cloudsql/${CLOUD_SQL_CONNECTION}" \
     --set-secrets="AVF_OPENAI_API_KEY=groq-api-key:latest" \
     --add-cloudsql-instances="${CLOUD_SQL_CONNECTION}" \
     --service-account="${COMPUTE_SA}"
