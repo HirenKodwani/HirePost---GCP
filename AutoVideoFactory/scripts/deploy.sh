@@ -86,6 +86,17 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${COMPUTE_SA}" \
     --role="roles/storage.objectViewer"
 
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${COMPUTE_SA}" \
+    --role="roles/logging.logWriter"
+
+# Create Artifact Registry repo
+echo "=== Creating Artifact Registry repo ==="
+gcloud artifacts repositories describe cloud-run-source-deploy --location="${REGION}" 2>/dev/null || \
+    gcloud artifacts repositories create cloud-run-source-deploy \
+        --repository-format=docker \
+        --location="${REGION}"
+
 # Build and push Docker image
 echo "=== Building Docker image ==="
 COMMIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "latest")
@@ -93,7 +104,7 @@ IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SER
 
 gcloud builds submit \
     --config=cloudbuild.yaml \
-    --substitutions="_REGION=${REGION},_CLOUD_SQL_CONNECTION=${CLOUD_SQL_CONNECTION},_DB_PASSWORD=${DB_PASS},_SERVICE_ACCOUNT=${COMPUTE_SA}" \
+    --substitutions="_REGION=${REGION},_CLOUD_SQL_CONNECTION=${CLOUD_SQL_CONNECTION},_DB_PASSWORD=${DB_PASS},_SERVICE_ACCOUNT=${COMPUTE_SA},_GCS_BUCKET=${GCS_BUCKET}" \
     .
 
 # Get the deployed URL
