@@ -62,8 +62,8 @@ gcloud sql instances describe "${CLOUD_SQL_INSTANCE}" 2>/dev/null || \
 gcloud sql databases describe "${DB_NAME}" --instance="${CLOUD_SQL_INSTANCE}" 2>/dev/null || \
     gcloud sql databases create "${DB_NAME}" --instance="${CLOUD_SQL_INSTANCE}"
 
-gcloud sql users describe "${DB_USER}" --instance="${CLOUD_SQL_INSTANCE}" 2>/dev/null || \
-    gcloud sql users create "${DB_USER}" --instance="${CLOUD_SQL_INSTANCE}" --password="${DB_PASS}"
+gcloud sql users create "${DB_USER}" --instance="${CLOUD_SQL_INSTANCE}" --password="${DB_PASS}" 2>/dev/null || true; \
+gcloud sql users set-password "${DB_USER}" --instance="${CLOUD_SQL_INSTANCE}" --password="${DB_PASS}"
 
 # Store Groq API key in Secret Manager
 echo "=== Storing secrets ==="
@@ -90,38 +90,17 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${COMPUTE_SA}" \
     --role="roles/logging.logWriter"
 
-# Create Artifact Registry repo
-echo "=== Creating Artifact Registry repo ==="
-gcloud artifacts repositories describe cloud-run-source-deploy --location="${REGION}" 2>/dev/null || \
-    gcloud artifacts repositories create cloud-run-source-deploy \
-        --repository-format=docker \
-        --location="${REGION}"
-
-# Build and push Docker image
-echo "=== Building Docker image ==="
-COMMIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "latest")
-IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERVICE_NAME}:${COMMIT_SHA}"
-
-gcloud builds submit \
-    --config=cloudbuild.yaml \
-    --substitutions="_REGION=${REGION},_CLOUD_SQL_CONNECTION=${CLOUD_SQL_CONNECTION},_DB_PASSWORD=${DB_PASS},_SERVICE_ACCOUNT=${COMPUTE_SA},_GCS_BUCKET=${GCS_BUCKET}" \
-    .
-
-# Get the deployed URL
-DEPLOY_URL=$(gcloud run services describe "${SERVICE_NAME}" --region="${REGION}" --format="value(status.url)" 2>/dev/null || echo "")
-
-if [ -z "$DEPLOY_URL" ]; then
-    # Deploy directly if Cloud Build didn't auto-deploy
-    echo "=== Deploying to Cloud Run ==="
-    gcloud run deploy "${SERVICE_NAME}" \
-        --image="${IMAGE_NAME}" \
-        --region="${REGION}" \
-        --platform=managed \
-        --allow-unauthenticated \
-        --memory=4Gi \
-        --cpu=2 \
-        --timeout=600 \
-        --set-env-vars="\
+# Build and deploy to Cloud Run using source deploy
+echo "=== Building & deploying to Cloud Run ==="
+gcloud run deploy "${SERVICE_NAME}" \
+    --source="." \
+    --region="${REGION}" \
+    --platform=managed \
+    --allow-unauthenticated \
+    --memory=4Gi \
+    --cpu=2 \
+    --timeout=600 \
+    --set-env-vars="\
 AVF_ENVIRONMENT=production,\
 AVF_DEBUG=false,\
 AVF_CONTAINER_MODE=true,\
@@ -133,12 +112,11 @@ AVF_LLM_MAX_TOKENS=8192,\
 AVF_STORAGE_PROVIDER=gcs,\
 AVF_GCS_BUCKET_NAME=${GCS_BUCKET},\
 AVF_DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASS}@//cloudsql/${CLOUD_SQL_CONNECTION}/${DB_NAME}" \
-        --set-secrets="AVF_OPENAI_API_KEY=groq-api-key:latest" \
-        --add-cloudsql-instances="${CLOUD_SQL_CONNECTION}" \
-        --service-account="${COMPUTE_SA}"
+    --set-secrets="AVF_OPENAI_API_KEY=groq-api-key:latest" \
+    --add-cloudsql-instances="${CLOUD_SQL_CONNECTION}" \
+    --service-account="${COMPUTE_SA}"
 
-    DEPLOY_URL=$(gcloud run services describe "${SERVICE_NAME}" --region="${REGION}" --format="value(status.url)")
-fi
+DEPLOY_URL=$(gcloud run services describe "${SERVICE_NAME}" --region="${REGION}" --format="value(status.url)")
 
 # Update redirect URI
 CALLBACK_URL="${DEPLOY_URL}/api/v1/auth/youtube/callback"
