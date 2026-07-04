@@ -90,6 +90,10 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${COMPUTE_SA}" \
     --role="roles/logging.logWriter"
 
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${COMPUTE_SA}" \
+    --role="roles/artifactregistry.writer"
+
 # Build and deploy to Cloud Run using source deploy
 echo "=== Building & deploying to Cloud Run ==="
 gcloud run deploy "${SERVICE_NAME}" \
