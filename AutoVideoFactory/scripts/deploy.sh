@@ -55,6 +55,7 @@ gcloud sql instances describe "${CLOUD_SQL_INSTANCE}" 2>/dev/null || \
         --database-version=POSTGRES_16 \
         --region="${REGION}" \
         --tier=db-f1-micro \
+        --edition=enterprise \
         --storage-size=10GB \
         --storage-type=SSD
 
