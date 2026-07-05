@@ -86,12 +86,23 @@ class OpenAIClient(LLMClient):
         self._base_url = base_url or settings.openai_base_url or "https://api.openai.com/v1"
         self._model = model or settings.openai_default_model
         self._http = httpx.AsyncClient(timeout=120.0)
+        self._last_request_time: float = 0.0
+        self._min_interval: float = 15.0
+
+    async def _throttle(self) -> None:
+        import asyncio, time
+        now = time.monotonic()
+        elapsed = now - self._last_request_time
+        if elapsed < self._min_interval:
+            await asyncio.sleep(self._min_interval - elapsed)
+        self._last_request_time = time.monotonic()
 
     async def generate(self, prompt: str, system_prompt: Optional[str] = None, **kwargs: Any) -> str:
         import asyncio
-        max_retries = kwargs.pop("max_retries", 5)
+        max_retries = kwargs.pop("max_retries", 15)
         for attempt in range(max_retries):
             try:
+                await self._throttle()
                 messages = []
                 if system_prompt:
                     messages.append({"role": "system", "content": system_prompt})
@@ -117,13 +128,13 @@ class OpenAIClient(LLMClient):
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
                 if status == 429 or status >= 500:
-                    wait = min(2 ** attempt * 5, 120)
+                    wait = min(2 ** attempt * 5, 180)
                     logger.warning(f"HTTP {status} (attempt {attempt+1}/{max_retries}), retrying in {wait}s")
                     await asyncio.sleep(wait)
                     continue
                 raise AIClientError(f"OpenAI request failed: {e}") from e
             except (httpx.TimeoutException, httpx.ConnectError) as e:
-                wait = min(2 ** attempt * 5, 120)
+                wait = min(2 ** attempt * 5, 180)
                 logger.warning(f"Connection error (attempt {attempt+1}/{max_retries}), retrying in {wait}s")
                 await asyncio.sleep(wait)
                 continue
