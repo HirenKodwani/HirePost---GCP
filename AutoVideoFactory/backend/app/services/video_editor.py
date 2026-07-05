@@ -220,7 +220,14 @@ class VideoEditorService:
                     pass
 
         if not temp_clips:
-            Path(output_path).write_bytes(b"")
+            logger.error("No clips could be processed — returning placeholder")
+            placeholder = str(self._output_dir / f"placeholder_{abs(hash(str(clips)))}.mp4")
+            if os.path.exists(placeholder):
+                os.replace(placeholder, output_path)
+            else:
+                subprocess.run([_find_ffmpeg(), "-y", "-f", "lavfi", "-i", f"color=c=0x000000:s={output_width}x{output_height}:d=5:r=30", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", placeholder], check=False, capture_output=True)
+                if os.path.exists(placeholder):
+                    os.replace(placeholder, output_path)
             return output_path
 
         concat_output = str(self._output_dir / f"concat_raw_{abs(hash(str(clips)))}.mp4")
@@ -239,9 +246,10 @@ class VideoEditorService:
             ]
             try:
                 subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
-            except Exception:
-                Path(output_path).write_bytes(b"")
-                return output_path
+            except Exception as e:
+                logger.warning(f"Concatenation failed: {e}")
+                if temp_clips:
+                    shutil.copy(temp_clips[0], concat_output)
 
         if voiceover_path and os.path.exists(voiceover_path):
             audio_output = output_path
@@ -262,7 +270,8 @@ class VideoEditorService:
                 logger.info(f"Video composed with voiceover: {audio_output}")
             except (subprocess.CalledProcessError, FileNotFoundError) as e:
                 logger.warning(f"Voiceover overlay failed: {e}, returning video without audio")
-                Path(output_path).write_bytes(b"")
+                if os.path.exists(concat_output):
+                    os.replace(concat_output, output_path)
                 return output_path
         else:
             if os.path.exists(concat_output):
@@ -278,6 +287,15 @@ class VideoEditorService:
                 os.remove(t)
             except Exception:
                 pass
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) < 1000:
+            logger.error(f"Output video is invalid or too small: {output_path}")
+            placeholder = str(self._output_dir / f"placeholder_{abs(hash(str(clips)))}.mp4")
+            cmd = [_find_ffmpeg(), "-y", "-f", "lavfi", "-i", f"color=c=0x000000:s={output_width}x{output_height}:d=5:r=30",
+                   "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", placeholder]
+            subprocess.run(cmd, check=False, capture_output=True, timeout=30)
+            if os.path.exists(placeholder):
+                os.replace(placeholder, output_path)
 
         return output_path
 

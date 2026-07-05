@@ -331,6 +331,8 @@ class ContentPipeline:
         script_content: str = "",
         step_results: Optional[dict] = None,
     ) -> dict[str, Any]:
+        if not os.path.exists(video_path) or os.path.getsize(video_path) < 1000:
+            raise PublishingError(f"Video file is missing or too small: {video_path}", code="INVALID_VIDEO")
         trending_tags = (step_results or {}).get("trending_tags", [])
         tag_str = " ".join(f"#{t}" for t in trending_tags[:10])
         description = (
@@ -345,7 +347,7 @@ class ContentPipeline:
             "description": description.strip(),
             "tags": tags,
             "category_id": "22",
-            "privacy_status": "public",
+            "privacy_status": "unlisted",
             "made_for_kids": False,
             "method": "auto",
         }
