@@ -90,7 +90,7 @@ gcloud run deploy "${SERVICE_NAME}" \
     --cpu=2 \
     --timeout=600 \
     --cpu-throttling \
-    --set-env-vars="\
+    --update-env-vars="\
 AVF_ENVIRONMENT=production,\
 AVF_DEBUG=false,\
 AVF_CONTAINER_MODE=true,\
@@ -102,7 +102,12 @@ AVF_LLM_TEMPERATURE=0.7,\
 AVF_LLM_MAX_TOKENS=8192,\
 AVF_STORAGE_PROVIDER=gcs,\
 AVF_GCS_BUCKET_NAME=${GCS_BUCKET},\
-AVF_DATA_DIR=/tmp/data" \
+AVF_DATA_DIR=/tmp/data,\
+AVF_SESSIONS_DIR=/tmp/sessions,\
+AVF_OUTPUT_DIR=/tmp/output,\
+AVF_TEMP_DIR=/tmp/temp,\
+AVF_LOGS_DIR=/tmp/logs" \
+    --remove-env-vars="AVF_DATABASE_URL" \
     --set-secrets="AVF_OPENAI_API_KEY=groq-api-key:latest" \
     --service-account="${COMPUTE_SA}"
 
