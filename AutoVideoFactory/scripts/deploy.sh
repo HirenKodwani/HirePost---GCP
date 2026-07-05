@@ -77,7 +77,6 @@ gcloud artifacts repositories describe cloud-run-source-deploy \
 
 gcloud builds submit \
     --tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERVICE_NAME}:latest" \
-    -f docker/Dockerfile.cloudrun \
     .
 
 # Deploy to Cloud Run (SQLite in /tmp/data, CPU throttled for free tier)
