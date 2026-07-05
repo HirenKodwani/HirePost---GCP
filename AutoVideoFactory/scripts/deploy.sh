@@ -16,6 +16,7 @@ SERVICE_NAME="autovideofactory"
 GCS_BUCKET="${SERVICE_NAME}-${PROJECT_ID}"
 GROQ_API_KEY="${AVF_OPENAI_API_KEY:-}"
 GROQ_API_KEY_BACKUP="${AVF_OPENAI_API_KEY_BACKUP:-}"
+GROQ_API_KEY_TERTIARY="${AVF_OPENAI_API_KEY_TERTIARY:-}"
 
 echo "=== Deploying AutoVideoFactory to Cloud Run (free tier) ==="
 echo "Project: $PROJECT_ID"
@@ -52,6 +53,11 @@ if [ -n "$GROQ_API_KEY_BACKUP" ]; then
         echo -n "${GROQ_API_KEY_BACKUP}" | gcloud secrets versions add groq-api-key-backup --data-file=-
 fi
 
+if [ -n "$GROQ_API_KEY_TERTIARY" ]; then
+    echo -n "${GROQ_API_KEY_TERTIARY}" | gcloud secrets create groq-api-key-tertiary --data-file=- 2>/dev/null || \
+        echo -n "${GROQ_API_KEY_TERTIARY}" | gcloud secrets versions add groq-api-key-tertiary --data-file=-
+fi
+
 # Grant Cloud Run access to secrets and GCS
 PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format="value(projectNumber)")
 COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
@@ -62,6 +68,12 @@ gcloud secrets add-iam-policy-binding groq-api-key \
 
 if [ -n "$GROQ_API_KEY_BACKUP" ]; then
     gcloud secrets add-iam-policy-binding groq-api-key-backup \
+        --member="serviceAccount:${COMPUTE_SA}" \
+        --role="roles/secretmanager.secretAccessor" 2>/dev/null || true
+fi
+
+if [ -n "$GROQ_API_KEY_TERTIARY" ]; then
+    gcloud secrets add-iam-policy-binding groq-api-key-tertiary \
         --member="serviceAccount:${COMPUTE_SA}" \
         --role="roles/secretmanager.secretAccessor" 2>/dev/null || true
 fi
@@ -122,6 +134,7 @@ AVF_LOGS_DIR=/tmp/logs" \
     --remove-env-vars="AVF_DATABASE_URL" \
     --set-secrets="AVF_OPENAI_API_KEY=groq-api-key:latest" \
     --set-secrets="AVF_OPENAI_API_KEY_BACKUP=groq-api-key-backup:latest" \
+    --set-secrets="AVF_OPENAI_API_KEY_TERTIARY=groq-api-key-tertiary:latest" \
     --service-account="${COMPUTE_SA}"
 
 DEPLOY_URL=$(gcloud run services describe "${SERVICE_NAME}" --region="${REGION}" --format="value(status.url)")

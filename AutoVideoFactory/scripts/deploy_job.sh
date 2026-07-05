@@ -34,7 +34,7 @@ gcloud run jobs create "${JOB_NAME}" \
     --cpu=2 \
     --task-timeout=1800 \
     --max-retries=2 \
-    --set-secrets="AVF_OPENAI_API_KEY=groq-api-key:latest,AVF_OPENAI_API_KEY_BACKUP=groq-api-key-backup:latest" \
+    --set-secrets="AVF_OPENAI_API_KEY=groq-api-key:latest,AVF_OPENAI_API_KEY_BACKUP=groq-api-key-backup:latest,AVF_OPENAI_API_KEY_TERTIARY=groq-api-key-tertiary:latest" \
     --update-env-vars="\
 AVF_ENVIRONMENT=production,\
 AVF_CONTAINER_MODE=true,\

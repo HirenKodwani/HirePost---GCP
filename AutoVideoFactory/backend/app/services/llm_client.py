@@ -100,6 +100,9 @@ class OpenAIClient(LLMClient):
         bk = os.environ.get("AVF_OPENAI_API_KEY_BACKUP", "")
         if bk:
             keys.append(bk)
+        tk = os.environ.get("AVF_OPENAI_API_KEY_TERTIARY", "")
+        if tk:
+            keys.append(tk)
         if not keys:
             keys.append("")
         return keys
