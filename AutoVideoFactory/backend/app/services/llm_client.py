@@ -115,12 +115,18 @@ class OpenAIClient(LLMClient):
                 data = response.json()
                 return data["choices"][0]["message"]["content"]
             except httpx.HTTPStatusError as e:
-                if e.response.status_code == 429:
+                status = e.response.status_code
+                if status == 429 or status >= 500:
                     wait = min(2 ** attempt * 5, 120)
-                    logger.warning(f"Rate limited (attempt {attempt+1}/{max_retries}), retrying in {wait}s")
+                    logger.warning(f"HTTP {status} (attempt {attempt+1}/{max_retries}), retrying in {wait}s")
                     await asyncio.sleep(wait)
                     continue
                 raise AIClientError(f"OpenAI request failed: {e}") from e
+            except (httpx.TimeoutException, httpx.ConnectError) as e:
+                wait = min(2 ** attempt * 5, 120)
+                logger.warning(f"Connection error (attempt {attempt+1}/{max_retries}), retrying in {wait}s")
+                await asyncio.sleep(wait)
+                continue
             except Exception as e:
                 raise AIClientError(f"OpenAI error: {e}") from e
         raise AIClientError("Max retries exceeded for OpenAI request")
