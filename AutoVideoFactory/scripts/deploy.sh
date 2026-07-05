@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# AutoVideoFactory - Cloud Run Deployment Script
+# AutoVideoFactory - Cloud Run Deployment Script (SQLite free tier)
 # Run this from Google Cloud Shell (https://shell.cloud.google.com)
 #
 # Prerequisites:
 #   1. A GCP project with billing enabled
 #   2. Run: gcloud auth login && gcloud config set project YOUR_PROJECT_ID
-#   3. A Cloud SQL PostgreSQL instance (or let this script create one)
 #
 # Usage: bash scripts/deploy.sh
 
@@ -15,14 +14,9 @@ PROJECT_ID=$(gcloud config get-value project)
 REGION="us-central1"
 SERVICE_NAME="autovideofactory"
 GCS_BUCKET="${SERVICE_NAME}-${PROJECT_ID}"
-CLOUD_SQL_INSTANCE="${SERVICE_NAME}-db"
-CLOUD_SQL_CONNECTION="${PROJECT_ID}:${REGION}:${CLOUD_SQL_INSTANCE}"
-DB_NAME="autovideofactory"
-DB_USER="autovideofactory"
-DB_PASS=$(openssl rand -base64 18)
 GROQ_API_KEY="${AVF_OPENAI_API_KEY:-}"
 
-echo "=== Deploying AutoVideoFactory to Cloud Run ==="
+echo "=== Deploying AutoVideoFactory to Cloud Run (free tier) ==="
 echo "Project: $PROJECT_ID"
 echo "Region: $REGION"
 
@@ -39,7 +33,6 @@ gcloud services enable \
     run.googleapis.com \
     cloudbuild.googleapis.com \
     artifactregistry.googleapis.com \
-    sqladmin.googleapis.com \
     storage.googleapis.com \
     secretmanager.googleapis.com
 
@@ -48,66 +41,61 @@ echo "=== Creating GCS bucket ==="
 gsutil ls "gs://${GCS_BUCKET}" 2>/dev/null || \
     gcloud storage buckets create "gs://${GCS_BUCKET}" --location="${REGION}"
 
-# Create Cloud SQL PostgreSQL instance
-echo "=== Creating Cloud SQL PostgreSQL instance ==="
-gcloud sql instances describe "${CLOUD_SQL_INSTANCE}" 2>/dev/null || \
-    gcloud sql instances create "${CLOUD_SQL_INSTANCE}" \
-        --database-version=POSTGRES_16 \
-        --region="${REGION}" \
-        --tier=db-f1-micro \
-        --edition=enterprise \
-        --storage-size=10GB \
-        --storage-type=SSD
-
-gcloud sql databases describe "${DB_NAME}" --instance="${CLOUD_SQL_INSTANCE}" 2>/dev/null || \
-    gcloud sql databases create "${DB_NAME}" --instance="${CLOUD_SQL_INSTANCE}"
-
-gcloud sql users create "${DB_USER}" --instance="${CLOUD_SQL_INSTANCE}" --password="${DB_PASS}" 2>/dev/null || true; \
-gcloud sql users set-password "${DB_USER}" --instance="${CLOUD_SQL_INSTANCE}" --password="${DB_PASS}"
-
 # Store Groq API key in Secret Manager
 echo "=== Storing secrets ==="
 echo -n "${GROQ_API_KEY}" | gcloud secrets create groq-api-key --data-file=- 2>/dev/null || \
     echo -n "${GROQ_API_KEY}" | gcloud secrets versions add groq-api-key --data-file=-
 
-# Grant Cloud Run access to secrets and Cloud SQL
+# Grant Cloud Run access to secrets and GCS
 PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format="value(projectNumber)")
 COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
 gcloud secrets add-iam-policy-binding groq-api-key \
     --member="serviceAccount:${COMPUTE_SA}" \
-    --role="roles/secretmanager.secretAccessor"
+    --role="roles/secretmanager.secretAccessor" 2>/dev/null || true
 
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${COMPUTE_SA}" \
-    --role="roles/cloudsql.client"
+    --role="roles/storage.objectAdmin" 2>/dev/null || true
 
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${COMPUTE_SA}" \
-    --role="roles/storage.objectViewer"
+    --role="roles/logging.logWriter" 2>/dev/null || true
 
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${COMPUTE_SA}" \
-    --role="roles/logging.logWriter"
+    --role="roles/artifactregistry.writer" 2>/dev/null || true
 
-gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${COMPUTE_SA}" \
-    --role="roles/artifactregistry.writer"
+# Build using Cloud Build with explicit Dockerfile
+echo "=== Building Docker image via Cloud Build ==="
+gcloud artifacts repositories describe cloud-run-source-deploy \
+    --location="${REGION}" 2>/dev/null || \
+    gcloud artifacts repositories create cloud-run-source-deploy \
+        --repository-format=docker \
+        --location="${REGION}" \
+        --description="Cloud Run source deploy"
 
-# Build and deploy to Cloud Run using source deploy
-echo "=== Building & deploying to Cloud Run ==="
+gcloud builds submit \
+    --tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERVICE_NAME}:latest" \
+    -f docker/Dockerfile.cloudrun \
+    .
+
+# Deploy to Cloud Run (SQLite in /tmp/data, CPU throttled for free tier)
+echo "=== Deploying to Cloud Run ==="
 gcloud run deploy "${SERVICE_NAME}" \
-    --source="." \
+    --image="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERVICE_NAME}:latest" \
     --region="${REGION}" \
     --platform=managed \
     --allow-unauthenticated \
     --memory=4Gi \
     --cpu=2 \
     --timeout=600 \
+    --cpu-throttling \
     --set-env-vars="\
 AVF_ENVIRONMENT=production,\
 AVF_DEBUG=false,\
 AVF_CONTAINER_MODE=true,\
+AVF_HOST=0.0.0.0,\
 AVF_LLM_PROVIDER=openai,\
 AVF_OPENAI_BASE_URL=https://api.groq.com/openai/v1,\
 AVF_OPENAI_DEFAULT_MODEL=llama-3.3-70b-versatile,\
@@ -115,14 +103,13 @@ AVF_LLM_TEMPERATURE=0.7,\
 AVF_LLM_MAX_TOKENS=8192,\
 AVF_STORAGE_PROVIDER=gcs,\
 AVF_GCS_BUCKET_NAME=${GCS_BUCKET},\
-AVF_DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=/cloudsql/${CLOUD_SQL_CONNECTION}" \
+AVF_DATA_DIR=/tmp/data" \
     --set-secrets="AVF_OPENAI_API_KEY=groq-api-key:latest" \
-    --add-cloudsql-instances="${CLOUD_SQL_CONNECTION}" \
     --service-account="${COMPUTE_SA}"
 
 DEPLOY_URL=$(gcloud run services describe "${SERVICE_NAME}" --region="${REGION}" --format="value(status.url)")
 
-# Update redirect URI
+# Update redirect URI for YouTube OAuth
 CALLBACK_URL="${DEPLOY_URL}/api/v1/auth/youtube/callback"
 gcloud run services update "${SERVICE_NAME}" \
     --region="${REGION}" \
@@ -133,6 +120,10 @@ echo "=========================================="
 echo "  DEPLOYMENT COMPLETE!"
 echo "  URL: ${DEPLOY_URL}"
 echo "=========================================="
+echo ""
+echo "=== IMPORTANT: YouTube tokens are ephemeral on SQLite ==="
+echo "  The app auto-restores tokens from GCS backup on startup."
+echo "  After first OAuth auth, tokens are persisted in GCS."
 echo ""
 echo "=== NEXT STEPS ==="
 echo ""
@@ -152,3 +143,6 @@ echo "   gcloud run services update ${SERVICE_NAME} --region=${REGION} --update-
 echo ""
 echo "5. To run a batch pipeline, trigger via POST to:"
 echo "   ${DEPLOY_URL}/api/v1/pipeline/batch"
+echo ""
+echo "6. (Optional) Delete old Cloud SQL instance to save money:"
+echo "   gcloud sql instances delete ${SERVICE_NAME}-db --project=${PROJECT_ID}"

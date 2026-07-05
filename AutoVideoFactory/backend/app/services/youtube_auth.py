@@ -58,6 +58,79 @@ class YouTubeAuthService:
     def __init__(self) -> None:
         SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
         self._flows: dict[str, InstalledAppFlow] = {}
+        self._restore_scheduled = False
+
+    async def _backup_tokens(self) -> None:
+        try:
+            from ..services.storage_service import storage
+            import json, tempfile, os
+            async with DatabaseEngine.get_session_factory()() as session:
+                from sqlalchemy import select
+                result = await session.execute(select(YouTubeAccount))
+                accounts = result.scalars().all()
+            if not accounts:
+                return
+            backup = [
+                {
+                    "email": a.email,
+                    "channel_name": a.channel_name,
+                    "refresh_token": a.refresh_token,
+                    "token_expiry": a.token_expiry.isoformat() if a.token_expiry else None,
+                    "oauth_config": a.oauth_config,
+                    "is_active": a.is_active,
+                    "upload_count": a.upload_count,
+                }
+                for a in accounts
+            ]
+            tmp = os.path.join(tempfile.gettempdir(), "avf_yt_tokens.json")
+            with open(tmp, "w") as f:
+                json.dump({"accounts": backup}, f)
+            await storage.upload(tmp, "youtube_tokens/backup.json")
+            os.unlink(tmp)
+            logger.info(f"Backed up {len(backup)} YouTube token(s) to storage")
+        except Exception as e:
+            logger.warning(f"Could not backup YouTube tokens: {e}")
+
+    async def _restore_tokens(self) -> int:
+        try:
+            from ..services.storage_service import storage
+            import json, tempfile, os, datetime as dt
+            exists = await storage.exists("youtube_tokens/backup.json")
+            if not exists:
+                return 0
+            async with DatabaseEngine.get_session_factory()() as session:
+                from sqlalchemy import select, func
+                cnt = await session.execute(select(func.count()).select_from(YouTubeAccount))
+                if cnt.scalar() > 0:
+                    return 0
+            tmp = os.path.join(tempfile.gettempdir(), "avf_yt_restore.json")
+            await storage.download("youtube_tokens/backup.json", tmp)
+            with open(tmp, "r") as f:
+                data = json.load(f)
+            os.unlink(tmp)
+            restored = 0
+            async with DatabaseEngine.get_session_factory()() as session:
+                for entry in data.get("accounts", []):
+                    try:
+                        expiry = dt.datetime.fromisoformat(entry["token_expiry"]) if entry.get("token_expiry") else None
+                        session.add(YouTubeAccount(
+                            email=entry["email"],
+                            channel_name=entry.get("channel_name", ""),
+                            refresh_token=entry["refresh_token"],
+                            token_expiry=expiry,
+                            oauth_config=entry.get("oauth_config", "default"),
+                            is_active=entry.get("is_active", True),
+                            upload_count=entry.get("upload_count", 0),
+                        ))
+                        restored += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to restore token for {entry.get('email')}: {e}")
+                await session.commit()
+            logger.info(f"Restored {restored} YouTube token(s) from storage backup")
+            return restored
+        except Exception as e:
+            logger.warning(f"Could not restore YouTube tokens: {e}")
+            return 0
 
     def get_oauth_configs(self) -> list[dict[str, str]]:
         return [
@@ -145,6 +218,8 @@ class YouTubeAuthService:
                     is_active=True, oauth_config=oauth_config))
             await session.commit()
 
+        await self._backup_tokens()
+
         return {"success": True, "email": email, "channel_name": channel_name, "expires_at": token_expiry.isoformat()}
 
     async def _get_userinfo(self, access_token: str) -> dict[str, Any]:
@@ -161,6 +236,11 @@ class YouTubeAuthService:
     async def get_credentials(
         self, account_id: Optional[str] = None
     ) -> Optional[Credentials]:
+        async with DatabaseEngine.get_session_factory()() as session:
+            from sqlalchemy import select, func
+            cnt = await session.execute(select(func.count()).select_from(YouTubeAccount))
+            if cnt.scalar() == 0:
+                await self._restore_tokens()
         async with DatabaseEngine.get_session_factory()() as session:
             from sqlalchemy import select
             if account_id:
@@ -207,7 +287,11 @@ class YouTubeAuthService:
 
     async def get_available_accounts(self) -> list[dict[str, Any]]:
         async with DatabaseEngine.get_session_factory()() as session:
-            from sqlalchemy import select
+            from sqlalchemy import select, func
+            cnt = await session.execute(select(func.count()).select_from(YouTubeAccount))
+            if cnt.scalar() == 0:
+                await self._restore_tokens()
+        async with DatabaseEngine.get_session_factory()() as session:
             result = await session.execute(
                 select(YouTubeAccount).where(YouTubeAccount.is_active == True)
             )

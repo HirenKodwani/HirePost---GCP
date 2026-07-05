@@ -12,14 +12,15 @@
 - Auth routes: `/api/v1/auth/youtube/login` (primary), `/api/v1/auth/youtube/login?oauth_config=secondary`
 - Both OAuth clients must have the redirect URI registered in Google Cloud Console
 
-## Cloud Deployment
-- **Target**: GCP Cloud Run (serverless containers)
-- **Dockerfile**: `docker/Dockerfile.cloudrun` — optimized, no Playwright, healthcheck included
-- **Build config**: `cloudbuild.yaml` — Cloud Build + Cloud Run deploy
-- **Deploy scripts**: `scripts/deploy.ps1` (Windows), `scripts/deploy.sh` (Cloud Shell/Linux)
-- **Database**: Cloud SQL PostgreSQL (asyncpg) — `AVF_DATABASE_URL=postgresql+asyncpg://...`
-- **Storage**: GCS bucket — controlled by `AVF_STORAGE_PROVIDER=gcs`
-- **CLI**: gcloud required for deployment. Run from Google Cloud Shell or local install
+## Cloud Deployment (Free Tier — Jul 2026)
+- **Target**: GCP Cloud Run (serverless containers), CPU throttled (no idle cost)
+- **Dockerfile**: `docker/Dockerfile.cloudrun` — explicit Docker build via `gcloud builds submit`, avoids Buildpacks
+- **Deploy script**: `scripts/deploy.sh` (Cloud Shell/Linux) — preferred for one-command deploy
+- **Database**: SQLite via aiosqlite at `AVF_DATA_DIR=/tmp/data` — **no Cloud SQL** (saves ~$10/mo)
+- **Storage**: GCS bucket — `AVF_STORAGE_PROVIDER=gcs`, `AVF_GCS_BUCKET_NAME=autovideofactory-{project}`
+- **YouTube token persistence**: OAuth refresh tokens backed up to GCS (`youtube_tokens/backup.json`) and auto-restored on startup
+- **Lifespan startup** (`main.py`): creates `data_dir`, runs `DatabaseEngine.create_all()`, then restores YouTube tokens from GCS backup
+- **CLI**: gcloud required. Run from Google Cloud Shell
 
 ## Recent Improvements (Jul 2026)
 - **LLM**: Migrated from Ollama (`llama3.2:3b`) → Groq (`llama-3.3-70b-versatile`). ~1.3s response time, 12k TPM rate limit
@@ -46,8 +47,8 @@
 | `backend/app/services/voice_service.py` | Edge-TTS voice generation (Hindi voices + moods) |
 | `backend/app/services/image_providers.py` | Pollinations, Pixabay (image+video), Stable Diffusion |
 | `backend/app/core/config.py` | All settings with env prefix `AVF_` |
+| `backend/app/main.py` | FastAPI app with SQLite + GCS token restore on startup |
 | `backend/.env` | Local config (secrets included for local dev) |
 | `docker/Dockerfile.cloudrun` | Cloud Run optimized container |
-| `scripts/deploy.ps1` | Windows deployment script |
-| `scripts/deploy.sh` | Cloud Shell deployment script |
-| `cloudbuild.yaml` | Cloud Build CI/CD config |
+| `scripts/deploy.sh` | Cloud Shell deployment script (free tier — SQLite, no Cloud SQL) |
+| `cloudbuild.yaml` | Cloud Build CI/CD config (legacy, not used by deploy.sh) |

@@ -45,7 +45,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "environment": settings.environment.value,
         },
     )
+    os.makedirs(settings.data_dir, exist_ok=True)
     await DatabaseEngine.create_all()
+    from .services.youtube_auth import youtube_auth_service
+    await youtube_auth_service._restore_tokens()
     orchestrator = AgentOrchestrator()
     orchestrator.register_agent(PlannerAgent())
     orchestrator.register_agent(TrendAgent())
