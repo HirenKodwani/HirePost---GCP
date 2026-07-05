@@ -56,6 +56,8 @@ JOB_PLATFORMS=youtube" \
 echo ""
 echo "=== Cloud Run Job created ==="
 
+PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format="value(projectNumber)")
+
 # Schedule daily execution via Cloud Scheduler
 echo "=== Creating/Updating Cloud Scheduler ==="
 gcloud scheduler jobs delete "${SCHEDULER_NAME}" --location="${REGION}" --quiet 2>/dev/null || true
