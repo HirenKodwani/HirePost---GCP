@@ -15,6 +15,7 @@ REGION="us-central1"
 SERVICE_NAME="autovideofactory"
 GCS_BUCKET="${SERVICE_NAME}-${PROJECT_ID}"
 GROQ_API_KEY="${AVF_OPENAI_API_KEY:-}"
+GROQ_API_KEY_BACKUP="${AVF_OPENAI_API_KEY_BACKUP:-}"
 
 echo "=== Deploying AutoVideoFactory to Cloud Run (free tier) ==="
 echo "Project: $PROJECT_ID"
@@ -41,10 +42,15 @@ echo "=== Creating GCS bucket ==="
 gsutil ls "gs://${GCS_BUCKET}" 2>/dev/null || \
     gcloud storage buckets create "gs://${GCS_BUCKET}" --location="${REGION}"
 
-# Store Groq API key in Secret Manager
+# Store Groq API keys in Secret Manager
 echo "=== Storing secrets ==="
 echo -n "${GROQ_API_KEY}" | gcloud secrets create groq-api-key --data-file=- 2>/dev/null || \
     echo -n "${GROQ_API_KEY}" | gcloud secrets versions add groq-api-key --data-file=-
+
+if [ -n "$GROQ_API_KEY_BACKUP" ]; then
+    echo -n "${GROQ_API_KEY_BACKUP}" | gcloud secrets create groq-api-key-backup --data-file=- 2>/dev/null || \
+        echo -n "${GROQ_API_KEY_BACKUP}" | gcloud secrets versions add groq-api-key-backup --data-file=-
+fi
 
 # Grant Cloud Run access to secrets and GCS
 PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format="value(projectNumber)")
@@ -53,6 +59,12 @@ COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 gcloud secrets add-iam-policy-binding groq-api-key \
     --member="serviceAccount:${COMPUTE_SA}" \
     --role="roles/secretmanager.secretAccessor" 2>/dev/null || true
+
+if [ -n "$GROQ_API_KEY_BACKUP" ]; then
+    gcloud secrets add-iam-policy-binding groq-api-key-backup \
+        --member="serviceAccount:${COMPUTE_SA}" \
+        --role="roles/secretmanager.secretAccessor" 2>/dev/null || true
+fi
 
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${COMPUTE_SA}" \
@@ -109,6 +121,7 @@ AVF_TEMP_DIR=/tmp/temp,\
 AVF_LOGS_DIR=/tmp/logs" \
     --remove-env-vars="AVF_DATABASE_URL" \
     --set-secrets="AVF_OPENAI_API_KEY=groq-api-key:latest" \
+    --set-secrets="AVF_OPENAI_API_KEY_BACKUP=groq-api-key-backup:latest" \
     --service-account="${COMPUTE_SA}"
 
 DEPLOY_URL=$(gcloud run services describe "${SERVICE_NAME}" --region="${REGION}" --format="value(status.url)")
@@ -145,8 +158,11 @@ echo ""
 echo "4. ADD PIXABAY API KEY (optional):"
 echo "   gcloud run services update ${SERVICE_NAME} --region=${REGION} --update-env-vars=AVF_PIXABAY_API_KEY=your_key"
 echo ""
-echo "5. To run a batch pipeline, trigger via POST to:"
-echo "   ${DEPLOY_URL}/api/v1/pipeline/batch"
+echo "5. TEST PIPELINE:"
+echo "   curl -X POST ${DEPLOY_URL}/api/v1/agents/run-full-pipeline \\"
+echo "     -H \"Content-Type: application/json\" \\"
+echo "     -d '{\"style\":\"comedy\",\"duration\":45,\"language\":\"hinglish\"}'"
+echo "   curl ${DEPLOY_URL}/api/v1/agents/pipeline-status/PIPELINE_ID"
 echo ""
 echo "6. (Optional) Delete old Cloud SQL instance to save money:"
 echo "   gcloud sql instances delete ${SERVICE_NAME}-db --project=${PROJECT_ID}"

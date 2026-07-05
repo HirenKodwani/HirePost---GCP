@@ -3,7 +3,10 @@
 ## LLM Provider
 - **Current**: Groq (`llama-3.3-70b-versatile`) via OpenAI-compatible API
 - `.env` config: `AVF_LLM_PROVIDER=openai`, `AVF_OPENAI_BASE_URL=https://api.groq.com/openai/v1`
-- API key: Stored in `.env` as `AVF_OPENAI_API_KEY`; for Cloud Run, stored in Secret Manager as `groq-api-key`
+- Primary key: Stored in `.env` as `AVF_OPENAI_API_KEY`; for Cloud Run, stored in Secret Manager as `groq-api-key`
+- Backup key (for rotation): Stored as `AVF_OPENAI_API_KEY_BACKUP`; Cloud Run secret `groq-api-key-backup`
+- **Key rotation**: `OpenAIClient` round-robins between keys on each `generate()` call; on 429, rotates with 2s delay — effective 24k TPM
+- Throttle: 20s minimum between API calls
 - Previously used: Ollama (`llama3.2:3b` local) — deprecated
 
 ## YouTube Channels
@@ -32,6 +35,7 @@
 - **Cloud Run**: New `Dockerfile.cloudrun` with healthcheck, `asyncpg` for PostgreSQL, `google-cloud-storage` for GCS
 
 ## Known Issues
+- **Groq rate limits (12k TPM)**: Primary cause of pipeline failures. Mitigated by key rotation (2 keys × round-robin = 24k effective TPM) + 20s throttle + 15 retries. If both keys hit limit simultaneously, retry backoff kicks in (5-180s).
 - **Pixabay**: Working with key `56515038-180ae2cbb9fdbd51f8ccb3806`. 500+ image and video results per query
 - **Instagram publisher**: Browser automation works locally but won't run on Cloud Run (no GUI browser)
 - **Ollama package uninstalled**: `ollama` pip package removed; project uses httpx directly
