@@ -30,6 +30,22 @@ gcloud run jobs create "${JOB_NAME}" \
     --max-retries=2 \
     --set-secrets="AVF_OPENAI_API_KEY=groq-api-key:latest" \
     --set-secrets="AVF_OPENAI_API_KEY_BACKUP=groq-api-key-backup:latest" \
+OAUTH_ENV_VARS=""
+OAUTH_ENV_VARS+="AVF_PIXABAY_API_KEY=${AVF_PIXABAY_API_KEY:-56515038-180ae2cbb9fdbd51f8ccb3806},"
+if [ -n "${AVF_GOOGLE_CLIENT_ID:-}" ]; then OAUTH_ENV_VARS+="AVF_GOOGLE_CLIENT_ID=${AVF_GOOGLE_CLIENT_ID},"; fi
+if [ -n "${AVF_GOOGLE_CLIENT_SECRET:-}" ]; then OAUTH_ENV_VARS+="AVF_GOOGLE_CLIENT_SECRET=${AVF_GOOGLE_CLIENT_SECRET},"; fi
+if [ -n "${AVF_GOOGLE_CLIENT_ID_2:-}" ]; then OAUTH_ENV_VARS+="AVF_GOOGLE_CLIENT_ID_2=${AVF_GOOGLE_CLIENT_ID_2},"; fi
+if [ -n "${AVF_GOOGLE_CLIENT_SECRET_2:-}" ]; then OAUTH_ENV_VARS+="AVF_GOOGLE_CLIENT_SECRET_2=${AVF_GOOGLE_CLIENT_SECRET_2},"; fi
+
+gcloud run jobs create "${JOB_NAME}" \
+    --image="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERVICE_NAME}:latest" \
+    --region="${REGION}" \
+    --memory=4Gi \
+    --cpu=2 \
+    --task-timeout=1800 \
+    --max-retries=2 \
+    --set-secrets="AVF_OPENAI_API_KEY=groq-api-key:latest" \
+    --set-secrets="AVF_OPENAI_API_KEY_BACKUP=groq-api-key-backup:latest" \
     --update-env-vars="\
 AVF_ENVIRONMENT=production,\
 AVF_CONTAINER_MODE=true,\
@@ -40,6 +56,7 @@ AVF_LLM_TEMPERATURE=0.7,\
 AVF_LLM_MAX_TOKENS=8192,\
 AVF_STORAGE_PROVIDER=gcs,\
 AVF_GCS_BUCKET_NAME=${GCS_BUCKET},\
+${OAUTH_ENV_VARS}\
 AVF_DATA_DIR=/tmp/data,\
 AVF_SESSIONS_DIR=/tmp/sessions,\
 AVF_OUTPUT_DIR=/tmp/output,\
