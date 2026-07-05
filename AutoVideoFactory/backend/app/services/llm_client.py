@@ -150,7 +150,6 @@ class OpenAIClient(LLMClient):
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
                 if status == 429 or status >= 500:
-                    # Respect retry-after header when present
                     retry_after = None
                     if "retry-after" in e.response.headers:
                         try:
@@ -158,11 +157,27 @@ class OpenAIClient(LLMClient):
                         except (ValueError, TypeError):
                             pass
 
+                    should_retry = e.response.headers.get("x-should-retry", "true") != "false"
+
                     if status == 429 and api_key_count > 1:
-                        key_idx = (attempt + 1) % api_key_count
-                        logger.warning(f"HTTP 429 on key {attempt % api_key_count}, rotating to key {key_idx}")
-                        delay = 2 if not retry_after else min(retry_after, 60)
-                        await asyncio.sleep(delay)
+                        current_key = attempt % api_key_count
+                        next_key = (attempt + 1) % api_key_count
+                        logger.warning(f"HTTP 429 on key {current_key}, rotating to key {next_key}")
+
+                        if not should_retry:
+                            logger.warning(f"x-should-retry=false, giving up after {attempt+1} attempt(s)")
+                            raise AIClientRateLimitError(
+                                f"Groq rate limited with x-should-retry=false, retry-after={retry_after}s"
+                            ) from e
+
+                        # After cycling through ALL keys, wait the full retry-after
+                        if (attempt + 1) % api_key_count == 0:
+                            wait = min(retry_after, 300) if retry_after else min(2 ** attempt * 5, 180)
+                            logger.warning(f"All keys exhausted, waiting {wait}s")
+                            await asyncio.sleep(wait)
+                        else:
+                            delay = 2 if not retry_after else min(retry_after, 60)
+                            await asyncio.sleep(delay)
                         continue
 
                     wait = retry_after if retry_after else min(2 ** attempt * 5, 180)
